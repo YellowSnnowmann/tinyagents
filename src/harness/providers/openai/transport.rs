@@ -279,11 +279,30 @@ pub(super) fn merge_system_into_user(messages: &[Message]) -> Vec<Message> {
     merged
 }
 
-/// Returns `true` for OpenAI o-series reasoning models (`o1`/`o3`/`o4`), which
-/// reject `max_tokens` and require `max_completion_tokens` instead.
+/// Returns `true` for OpenAI reasoning models, which reject `max_tokens` and
+/// require `max_completion_tokens` instead.
+///
+/// Covers the o-series (`o1`/`o3`/`o4`) **and the gpt-5 family**. gpt-5 was
+/// missing entirely: its cap was routed to `max_tokens`, which OpenAI rejects
+/// outright (`Unsupported parameter: 'max_tokens' … use
+/// 'max_completion_tokens'`), and it was additionally profiled as
+/// `reasoning: false` / `native_structured_output: false`, so a
+/// `CapabilitySet { reasoning: true }` filtered it out and structured output
+/// picked the tool-call fallback over native schema mode.
 pub(super) fn is_reasoning_model(model: &str) -> bool {
     let lower = model.to_ascii_lowercase();
-    lower.starts_with("o1") || lower.starts_with("o3") || lower.starts_with("o4")
+    lower.starts_with("o1")
+        || lower.starts_with("o3")
+        || lower.starts_with("o4")
+        || is_gpt5_family(&lower)
+}
+
+/// Returns `true` for the gpt-5 family, tolerating the gateway-prefixed ids
+/// routers use (`openai/gpt-5-mini` on OpenRouter).
+///
+/// Takes an already-lowercased id; callers inside this module always have one.
+pub(super) fn is_gpt5_family(lower: &str) -> bool {
+    lower.starts_with("gpt-5") || lower.starts_with("gpt5") || lower.contains("/gpt-5")
 }
 
 /// Derives a static [`ModelProfile`] for an OpenAI(-compatible) model id.

@@ -1712,6 +1712,19 @@ fn routes_max_tokens_to_max_completion_tokens_for_o_series() {
 }
 
 #[test]
+fn routes_max_tokens_to_max_completion_tokens_for_gpt5() {
+    // gpt-5 family rejects `max_tokens` and requires `max_completion_tokens`
+    // (openhuman #5498); route the cap to the accepted field and drop the
+    // rejected one from the wire body.
+    let request = ModelRequest::new(vec![Message::user("hi")]).with_max_tokens(128);
+    let model = OpenAiModel::new("k").with_model("gpt-5.4-mini");
+    let value = serde_json::to_value(model.translate_request(&request).unwrap()).unwrap();
+
+    assert!(value.get("max_tokens").is_none());
+    assert_eq!(value["max_completion_tokens"], json!(128));
+}
+
+#[test]
 fn keeps_max_tokens_for_classic_models() {
     let request = ModelRequest::new(vec![Message::user("hi")]).with_max_tokens(128);
     let value = serde_json::to_value(model().translate_request(&request).unwrap()).unwrap();

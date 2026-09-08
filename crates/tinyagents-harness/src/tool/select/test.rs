@@ -293,3 +293,50 @@ fn compatibility_is_one_directional_and_narrow() {
     assert!(!verbs_are_compatible(ToolVerb::Create, ToolVerb::Read));
     assert!(verbs_are_compatible(ToolVerb::Create, ToolVerb::Create));
 }
+
+#[test]
+fn strong_name_overlap_can_outrank_a_bare_verb_match_and_that_is_deliberate() {
+    // The score is `weighted_overlap + verb_bonus`, and the two bonuses
+    // differ by 2 — so a compatible `Read` tool whose *name* matches the
+    // query can rank above an exact-verb `List` tool that matches nothing
+    // else. That is the ranking working, not a defect: a name hit is worth
+    // 3 and is the stronger relevance signal. Sorting by verb class first
+    // would bury the tool the user actually named.
+    let tools = vec![
+        // Exact verb (List, +3), zero token overlap.
+        SelectableTool::new("GITHUB_LIST_GISTS", "List gists"),
+        // Compatible verb (Read, +1) but three name hits (3 * 3 = 9).
+        SelectableTool::new(
+            "GITHUB_GET_A_PULL_REQUEST_COMMENT",
+            "Get one review comment",
+        ),
+    ];
+    let got: Vec<&str> = rank_tools_by_prompt("find the pull request comment", &tools, 10)
+        .into_iter()
+        .map(|i| tools[i].name)
+        .collect();
+    assert_eq!(
+        got.first(),
+        Some(&"GITHUB_GET_A_PULL_REQUEST_COMMENT"),
+        "the tool the query names must lead: {got:?}"
+    );
+}
+
+#[test]
+fn with_overlap_equal_the_exact_verb_wins() {
+    // The companion to the case above: strip the overlap advantage and the
+    // verb bonus is what decides, so an exact match leads a compatible one.
+    let tools = vec![
+        SelectableTool::new("GITHUB_GET_PULL_REQUEST", "Get a pull request"),
+        SelectableTool::new("GITHUB_LIST_PULL_REQUEST", "List pull requests"),
+    ];
+    let got: Vec<&str> = rank_tools_by_prompt("find the pull request", &tools, 10)
+        .into_iter()
+        .map(|i| tools[i].name)
+        .collect();
+    assert_eq!(
+        got.first(),
+        Some(&"GITHUB_LIST_PULL_REQUEST"),
+        "equal overlap → the exact verb match leads: {got:?}"
+    );
+}
